@@ -1,16 +1,18 @@
-{-# LANGUAGE TemplateHaskell #-}
-module Main where
+{-# LANGUAGE TemplateHaskell, ViewPatterns #-}
+module Distribution.Query
+    ( queryFiles
+    , queryIndex
+    , exampleQuery ) where
 
 import Codec.Archive.Tar as T hiding (unpack)
-import Control.Monad hiding (join)
 import Data.ByteString.Internal (w2c)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy as B
 import Data.Data
 import Data.DeriveTH
 import Data.Generics.PlateData
-import Data.List.Stream
 import Data.List.Utils (join)
+import Data.Maybe
 import Distribution.Compiler
 import Distribution.License
 import Distribution.ModuleName hiding (main)
@@ -19,13 +21,8 @@ import Distribution.PackageDescription
 import Distribution.PackageDescription.Parse
 import Distribution.Version
 import Language.Haskell.Extension
-import System.Environment
 
-import Prelude hiding (map, head, null, (++), filter)
-
-import TH
-
-import Debug.Trace.Helpers
+import Distribution.Query.TH
 
 $(deriveMany makeTypeable
   [''PackageDescription
@@ -63,11 +60,13 @@ $(deriveMany makeData
   ,''Extension
   ,''Version])
 
+
+-- Workaround for ModuleName, see http://code.google.com/p/ndmitchell/issues/detail?id=209
 instance Data ModuleName where
-    gfoldl _ z = z . simple . join "." . components
+    gfoldl  _ z   = z . simple . join "." . components
     gunfold _ z _ = z $ simple ""
-    toConstr _ = con_C
-    dataTypeOf _ = ty_T
+    toConstr    _ = con_C
+    dataTypeOf  _ = ty_T
 
 con_C :: Constr
 con_C = mkConstr ty_T "ModuleName" [] Prefix
@@ -75,21 +74,27 @@ con_C = mkConstr ty_T "ModuleName" [] Prefix
 ty_T :: DataType
 ty_T = mkDataType "Distribution.ModuleName.ModuleName" [con_C]
 
-extractFields :: (Data a, Data b) => (b -> Bool) -> a -> [b]
-extractFields f l = [ x | x <- universeBi l, f x ]
-
-readIndex :: ByteString -> [PackageDescription]
-readIndex = ignoreParseErrors . map (return . packageDescription <=< parsePackageDescription) .
-            foldEntries foldF [] (const []) . T.read
+queryIndex :: (PackageDescription -> [a]) -> ByteString -> [[a]]
+queryIndex q = procQuery q . foldEntries foldF [] (const []) . T.read
     where
-      foldF :: Entry -> [String] -> [String]
-      foldF e rest = (\(NormalFile s _) -> map w2c $ B.unpack s) (entryContent e) : rest
+      foldF :: Entry -> [PackageDescription] -> [PackageDescription]
+      foldF c rest =
+          case entryContent c of
+            NormalFile s _ -> maybe rest (:rest) $ parsePD s
+            _              -> rest
 
-      ignoreParseErrors :: [ParseResult a] -> [a]
-      ignoreParseErrors l = [ x | ParseOk _ x <- l ]
+parsePD :: ByteString -> Maybe PackageDescription
+parsePD s =
+    case (parsePackageDescription $ map w2c $ B.unpack s) of
+      ParseOk _ x -> Just $ packageDescription x
+      _           -> Nothing
 
-main :: IO ()
-main = print . filter (not . null) . map (universeBi :: PackageDescription -> [License]) . readIndex =<< B.readFile . head =<< getArgs
 
-licenseAndPackageId :: (PackageIdentifier, License) -> Bool
-licenseAndPackageId (_, _) = True
+queryFiles :: (PackageDescription -> [a]) -> [ByteString] -> [[a]]
+queryFiles q = procQuery q . catMaybes . map parsePD
+
+procQuery :: (PackageDescription -> [a]) -> [PackageDescription] -> [[a]]
+procQuery q = filter (not . null) . map q
+
+exampleQuery :: PackageDescription -> [(PackageIdentifier, License)]
+exampleQuery l = [(x, y) | x <- universeBi l, y <- universeBi l, y == GPL]

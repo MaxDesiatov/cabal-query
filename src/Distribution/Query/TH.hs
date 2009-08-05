@@ -1,6 +1,6 @@
-module TH where
+module Distribution.Query.TH where
 
-import Language.C.Analysis.TravMonad
+import MonadUtils
 import Data.DeriveTH
 import Language.Haskell.TH
 

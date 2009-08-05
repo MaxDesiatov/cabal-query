@@ -1,17 +1,16 @@
-name:           cabal-query
-version:        0.0
-copyright:      Max Desyatov
-category:       System
-maintainer:     Max Desyatov <explicitcall at gmail.com>
-author:         Max Desyatov
-license:        BSD3
-license-file:   LICENSE
-build-depends:  base >= 4, mtl, template-haskell, derive, language-c, Cabal,
-                MissingH, uniplate, bytestring, tar, DebugTraceHelpers, stream-fusion
-synopsis:       cabal-query
-Stability:      Experimental
-Build-type:     Simple
-executable:     cabal-query
-main-is:        Main.hs
-ghc-options:    -Wall -fno-warn-orphans -O
-hs-source-dirs: src
+name:            cabal-query
+version:         0.0
+copyright:       Max Desyatov
+category:        System
+maintainer:      Max Desyatov <explicitcall at gmail.com>
+author:          Max Desyatov
+license:         BSD3
+license-file:    LICENSE
+build-depends:   base >= 4, mtl, template-haskell, derive, Cabal,
+                 MissingH, uniplate, bytestring, tar, ghc
+synopsis:        Helpers for quering .cabal files or hackageDB 00-index.tar
+Stability:       Experimental
+Build-type:      Simple
+ghc-options:     -Wall -fno-warn-orphans -O
+hs-source-dirs:  src
+exposed-modules: Distribution.Query
