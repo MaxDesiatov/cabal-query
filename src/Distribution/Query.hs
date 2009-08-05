@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, ViewPatterns #-}
+{-# LANGUAGE TemplateHaskell #-}
 module Distribution.Query
     ( queryFiles
     , queryIndex
@@ -60,7 +60,6 @@ $(deriveMany makeData
   ,''Extension
   ,''Version])
 
-
 -- Workaround for ModuleName, see http://code.google.com/p/ndmitchell/issues/detail?id=209
 instance Data ModuleName where
     gfoldl  _ z   = z . simple . join "." . components
@@ -88,7 +87,6 @@ parsePD s =
     case (parsePackageDescription $ map w2c $ B.unpack s) of
       ParseOk _ x -> Just $ packageDescription x
       _           -> Nothing
-
 
 queryFiles :: (PackageDescription -> [a]) -> [ByteString] -> [[a]]
 queryFiles q = procQuery q . catMaybes . map parsePD
