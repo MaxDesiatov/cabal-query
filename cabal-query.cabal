@@ -14,3 +14,4 @@ Build-type:      Simple
 ghc-options:     -Wall -fno-warn-orphans -O
 hs-source-dirs:  src
 exposed-modules: Distribution.Query
+other-modules:   Distribution.Query.TH
