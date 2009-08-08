@@ -1,79 +1,63 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
+-- | This package uses "Data.Generics.PlateData", so
+--
+-- * when Cabal package format changes, we don't have to rewrite anything
+--
+-- * all queries are statically typed
+--
+-- * as a disadvantage, we may suffer some performance loss when doing very complex queries,
+--   anyway most of processing goes while we read package descriptions, not querying them
+--
+-- Example of enduser querying code:
+--
+-- @
+--module Main where
+--
+-- import qualified Data.ByteString.Lazy as B
+--import System.Environment
+--import Distribution.Query
+--import Distribution.Compiler
+--import Distribution.License
+--import Distribution.ModuleName hiding (main)
+--import Distribution.Package
+--import Distribution.PackageDescription
+--import Distribution.Version
+--import Distribution.Text
+--import Language.Haskell.Extension
+--
+-- main = (head \`fmap\` getArgs) >>=
+--        B.readFile >>=
+--        mapM_ (putStrLn . show . (\x -> (display $ package x, display $ license x))) .
+--        queryIndex (Not (Id (== GPL)) :& Not (Id (== BSD3)))
+-- @
+--
+-- You can query any field of 'PackageDescription' no matter how deep it is.
+-- You don't need to provide any type signature for comparison functions,
+-- which are wrapped in 'Id', as long as you use data constructors for which type can be inferred.
+--
+-- See 'PackageDescription' fields for details.
 module Distribution.Query
     ( queryFiles
     , queryIndex
-    , exampleQuery ) where
+    , module Distribution.Query.Types ) where
 
 import Codec.Archive.Tar as T hiding (unpack)
 import Data.ByteString.Internal (w2c)
 import Data.ByteString.Lazy (ByteString)
 import qualified Data.ByteString.Lazy as B
-import Data.Data
-import Data.DeriveTH
 import Data.Generics.PlateData
-import Data.List.Utils (join)
 import Data.Maybe
-import Distribution.Compiler
-import Distribution.License
-import Distribution.ModuleName hiding (main)
-import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Parse
-import Distribution.Version
-import Language.Haskell.Extension
 
-import Distribution.Query.TH
+import Distribution.Query.Types
 
-$(deriveMany makeTypeable
-  [''PackageDescription
-  ,''Executable
-  ,''Library
-  ,''BuildType
-  ,''VersionRange
-  ,''Dependency
-  ,''SourceRepo
-  ,''CompilerFlavor
-  ,''License
-  ,''PackageIdentifier
-  ,''BuildInfo
-  ,''ModuleName
-  ,''PackageName
-  ,''RepoType
-  ,''RepoKind
-  ,''Extension])
-
-$(deriveMany makeData
-  [''PackageDescription
-  ,''Executable
-  ,''Library
-  ,''BuildType
-  ,''VersionRange
-  ,''Dependency
-  ,''SourceRepo
-  ,''CompilerFlavor
-  ,''License
-  ,''PackageIdentifier
-  ,''BuildInfo
-  ,''PackageName
-  ,''RepoType
-  ,''RepoKind
-  ,''Extension
-  ,''Version])
-
--- Workaround for ModuleName, see http://code.google.com/p/ndmitchell/issues/detail?id=209
-instance Data ModuleName where
-    gfoldl  _ z   = z . simple . join "." . components
-    gunfold _ z _ = z $ simple ""
-    toConstr    _ = con_C
-    dataTypeOf  _ = ty_T
-
-con_C :: Constr
-con_C = mkConstr ty_T "ModuleName" [] Prefix
-
-ty_T :: DataType
-ty_T = mkDataType "Distribution.ModuleName.ModuleName" [con_C]
-
-queryIndex :: (PackageDescription -> [a]) -> ByteString -> [[a]]
+-- | Queries an index file, which is commonly located at
+-- <~/.cabal/packages/hackage.haskell.org/00-index.tar> in POSIX systems.
+queryIndex :: Query
+           -> ByteString           -- ^ The index file must be read as lazy ByteString
+           -> [PackageDescription] -- ^ Returns a list of package descriptions which satisfy the query
 queryIndex q = procQuery q . foldEntries foldF [] (const []) . T.read
     where
       foldF :: Entry -> [PackageDescription] -> [PackageDescription]
@@ -88,11 +72,17 @@ parsePD s =
       ParseOk _ x -> Just $ packageDescription x
       _           -> Nothing
 
-queryFiles :: (PackageDescription -> [a]) -> [ByteString] -> [[a]]
+-- | Queries .cabal files.
+queryFiles :: Query
+           -> [ByteString]         -- ^ All files must be read as lazy ByteStrings
+           -> [PackageDescription] -- ^ Returns a list of package descriptions which satisfy the query
 queryFiles q = procQuery q . catMaybes . map parsePD
 
-procQuery :: (PackageDescription -> [a]) -> [PackageDescription] -> [[a]]
-procQuery q = filter (not . null) . map q
+procQuery :: Query -> [PackageDescription] -> [PackageDescription]
+procQuery q = filter (doQuery q)
 
-exampleQuery :: PackageDescription -> [(PackageIdentifier, License)]
-exampleQuery l = [(x, y) | x <- universeBi l, y <- universeBi l, y == GPL]
+doQuery :: Query -> PackageDescription -> Bool
+doQuery (Id  f)    pd = or [f x | x <- universeBi pd]
+doQuery (Not q)    pd = not $ doQuery q pd
+doQuery (q1 :& q2) pd = doQuery q1 pd && doQuery q2 pd
+doQuery (q1 :| q2) pd = doQuery q1 pd || doQuery q2 pd
