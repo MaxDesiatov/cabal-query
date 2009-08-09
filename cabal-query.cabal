@@ -1,7 +1,7 @@
 name:            cabal-query
 version:         0.1
 copyright:       (c) 2009 Max Desyatov
-category:        System
+category:        System, Distribution
 maintainer:      Max Desyatov <explicitcall at gmail.com>
 author:          Max Desyatov
 license:         BSD3
